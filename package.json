@@ -11,6 +11,7 @@
     "build": "node scripts/fetch-binaries.cjs && tsc && npx tailwindcss -i ./public/global.css -o ./public/output.css --minify && tsc --project tsconfig.scripts.json && node scripts/inject-offsets.cjs",
     "fetch-binaries": "node scripts/fetch-binaries.cjs",
     "inject-offsets": "node scripts/inject-offsets.cjs",
+    "gen-dump-tables": "node scripts/gen-dump-tables.cjs",
     "clean:win": "rd /s /q dist && rd /s /q build && del public/output.css /q",
     "clean:linux": "rm -rf dist build public/output.css",
     "download:binding": "start https://github.com/frida/frida/releases/download/16.4.10/frida-v16.4.10-electron-v125-win32-x64.tar.gz",
