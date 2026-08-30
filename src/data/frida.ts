@@ -72,6 +72,21 @@ export const NO_ROOT_REASON = 'No root on device — enable root in the emulator
 const looksLikeNoRoot = (output:string):boolean =>
     /su: (not found|inaccessible)|not found|permission denied|need to be root|access denied/i.test(output)
 
+// A frida-server that exits immediately almost always says why. Keep the
+// device's own words in the failure state — a bare "Frida server crashed"
+// tells nobody anything, and the log is the only other place it survives.
+const exitReason = (output:string):string => {
+    const text = String(output ?? '')
+    if (looksLikeNoRoot(text)) return NO_ROOT_REASON
+    if (/address already in use|unable to bind|already running/i.test(text))
+        return 'frida-server is already running — restart the emulator and try again'
+    if (/exec format error|not executable|cannot execute/i.test(text))
+        return 'frida-server does not match the device CPU — delete /data/local/tmp/frida-server* and retry'
+    const detail = text.split('\n').map(l => l.trim()).filter(Boolean).pop() ?? ''
+    if (detail === '') return ''
+    return `Frida server crashed: ${detail.length > 120 ? detail.slice(0, 120) + '…' : detail}`
+}
+
 export const hasRoot = async (id:string):Promise<boolean> => {
     if(id === '') return false
     try {
@@ -95,10 +110,10 @@ export const startFrida = async (id:string, filename:string, onCrashed:(reason?:
         server.then(out => {
             const text = String(out ?? '')
             if(text.trim() !== '') Logger.error(`[*] frida-server exited: ${text.trim()}`)
-            onCrashed(looksLikeNoRoot(text) ? NO_ROOT_REASON : undefined)
+            onCrashed(exitReason(text) || undefined)
         }).catch(err => {
             Logger.error(`[*] frida-server exited with an error: ${err}`)
-            onCrashed(looksLikeNoRoot(String(err)) ? NO_ROOT_REASON : undefined)
+            onCrashed(exitReason(String(err)) || undefined)
         })
         return true
     } catch (err) {
