@@ -1,6 +1,6 @@
 {
   "name": "anonymous",
-  "version": "1.57.2",
+  "version": "1.57.3",
   "description": "anonymous.exe - milkchoco frida tool (haguruma remaster)",
   "main": "dist/index.js",
   "scripts": {
