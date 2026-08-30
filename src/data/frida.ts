@@ -63,14 +63,43 @@ export const getArch = async (id:string):Promise<string> => {
     return arch
 }
 
-export const startFrida = async (id:string, filename:string, onCrashed:() => void):Promise<boolean> => {
+// `su` is missing (or refuses) on locked-down emulators — PC-cafe BlueStacks
+// images ship with root off — and on stock phones. frida-server itself needs
+// root, so recognise that failure text and report it instead of letting the
+// run die later with a generic "failed to connect".
+export const NO_ROOT_REASON = 'No root on device — enable root in the emulator settings'
+
+const looksLikeNoRoot = (output:string):boolean =>
+    /su: (not found|inaccessible)|not found|permission denied|need to be root|access denied/i.test(output)
+
+export const hasRoot = async (id:string):Promise<boolean> => {
+    if(id === '') return false
+    try {
+        const out = await adb.shell(id, 'su -c id')
+        return String(out).includes('uid=0')
+    } catch (err) {
+        Logger.error(`[*] Root check failed: ${err}`)
+        return false
+    }
+}
+
+export const startFrida = async (id:string, filename:string, onCrashed:(reason?:string) => void):Promise<boolean> => {
     if(id === '') {
         Logger.error('[*] ADB not connected');
         return false;
     }
     try{
         const server = adb.shell(id, `su -c /data/local/tmp/${filename}`)
-        server.then(onCrashed)
+        // frida-server only returns when it exits, so this resolving at all
+        // means the server is gone — either it crashed or `su` rejected it.
+        server.then(out => {
+            const text = String(out ?? '')
+            if(text.trim() !== '') Logger.error(`[*] frida-server exited: ${text.trim()}`)
+            onCrashed(looksLikeNoRoot(text) ? NO_ROOT_REASON : undefined)
+        }).catch(err => {
+            Logger.error(`[*] frida-server exited with an error: ${err}`)
+            onCrashed(looksLikeNoRoot(String(err)) ? NO_ROOT_REASON : undefined)
+        })
         return true
     } catch (err) {
         Logger.error(`[*] Failed to start frida server`)
@@ -238,22 +267,52 @@ export const fileExist = async (id:string, version:string):Promise<string> => {
     return file.name
 }
 
-export const checkFridaPerm = async (id:string, filename:string):Promise<boolean> => {
+// Result of the pre-launch permission check. `reason` is shown to the user as
+// the failure state, so it has to name the actual problem.
+export type PermCheck = { ok:boolean, reason:string }
+
+export const checkFridaPerm = async (id:string, filename:string):Promise<PermCheck> => {
     if(id === '') {
         Logger.error('[*] ADB not connected');
-        return false;
+        return { ok: false, reason: 'ADB not connected' };
     }
-    const permissions = await adb.shell(id, `ls -l /data/local/tmp/${filename}`)
-    if (!permissions.includes('rwxrwxrwx')) {
-        try{
-            const chmod = await adb.shell(id, `su -c "chmod 777 /data/local/tmp/${filename}"`)
-            return true
+    const target = `/data/local/tmp/${filename}`
+
+    // First field of `ls -l` is the mode string, e.g. "-rwxrwxrwx".
+    const mode = async ():Promise<string> => {
+        try {
+            const out = String(await adb.shell(id, `ls -l ${target}`)).trim()
+            if (/no such file/i.test(out)) return ''
+            return out.split(/\s+/)[0] ?? ''
         } catch (err) {
-            Logger.error(`[*] Failed to change permissions: ${err}`)
-            return false
+            Logger.error(`[*] Failed to stat ${target}: ${err}`)
+            return ''
         }
-    } else {
-        return true
+    }
+
+    const executable = (m:string):boolean => /^-rwx/.test(m)
+
+    let perms = await mode()
+    if (perms === '') return { ok: false, reason: 'frida-server missing on device' }
+    if (executable(perms)) return { ok: true, reason: '' }
+
+    // The binary is pushed over adb, so it belongs to the shell user and can be
+    // chmod'ed without root — only fall back to `su` if the plain chmod fails.
+    for (const cmd of [`chmod 777 ${target}`, `su -c "chmod 777 ${target}"`]) {
+        try {
+            await adb.shell(id, cmd)
+        } catch (err) {
+            Logger.error(`[*] ${cmd} failed: ${err}`)
+            continue
+        }
+        perms = await mode()
+        if (executable(perms)) return { ok: true, reason: '' }
+    }
+
+    Logger.error(`[*] Could not make ${target} executable (mode=${perms || 'unknown'})`)
+    return {
+        ok: false,
+        reason: await hasRoot(id) ? 'Failed to chmod frida-server' : NO_ROOT_REASON,
     }
 }
 
