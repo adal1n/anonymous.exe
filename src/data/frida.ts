@@ -99,6 +99,16 @@ export const hasRoot = async (id:string):Promise<boolean> => {
 }
 
 export const startFrida = async (id:string, filename:string, onCrashed:(reason?:string) => void):Promise<boolean> => {
+    // frida-server needs root, and a `su` that refuses often exits non-zero
+    // with no output at all — nothing to pattern-match on. So when the server
+    // dies without saying why, ask the device whether root works at all.
+    const report = async (deviceId:string, output:string):Promise<void> => {
+        const known = exitReason(output)
+        if (known !== '') return onCrashed(known)
+        if (!await hasRoot(deviceId)) return onCrashed(NO_ROOT_REASON)
+        onCrashed(undefined)
+    }
+
     if(id === '') {
         Logger.error('[*] ADB not connected');
         return false;
@@ -110,10 +120,15 @@ export const startFrida = async (id:string, filename:string, onCrashed:(reason?:
         server.then(out => {
             const text = String(out ?? '')
             if(text.trim() !== '') Logger.error(`[*] frida-server exited: ${text.trim()}`)
-            onCrashed(exitReason(text) || undefined)
+            void report(id, text)
         }).catch(err => {
-            Logger.error(`[*] frida-server exited with an error: ${err}`)
-            onCrashed(exitReason(String(err)) || undefined)
+            // adb-ts rejects with AdbExecError, whose `message` is the trimmed
+            // stderr — and a `su` that refuses without printing anything leaves
+            // it empty, so log every field before falling back to a root probe.
+            const detail = [err?.message, err?.command && `(cmd: ${err.command})`]
+                .filter(Boolean).join(' ')
+            Logger.error(`[*] frida-server exited with an error: ${err?.name ?? err} ${detail}`.trim())
+            void report(id, String(err?.message ?? ''))
         })
         return true
     } catch (err) {
