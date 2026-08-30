@@ -310,8 +310,9 @@ app.on("ready", async () => {
             }
             const perm = await checkFridaPerm(adbId, filename);
             if(!perm.ok){ state("server", "error", perm.reason || "Frida permissions denied"); return false; }
-            if(!await startFrida(adbId, filename, (reason) => state("server", "error", reason ?? "Frida server crashed"))) {
-                state("server", "error", "Failed to start frida server");
+            const started = await startFrida(adbId, filename, (reason) => state("server", "error", reason ?? "Frida server crashed"));
+            if(!started.ok) {
+                state("server", "error", started.reason || "Failed to start frida server");
                 return false;
             }
             state("server", "active", "Frida server started");
