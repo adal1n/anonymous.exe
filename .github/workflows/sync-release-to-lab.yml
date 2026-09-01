@@ -1,0 +1,50 @@
+name: Sync release to lab
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to sync (defaults to the latest release)"
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve tag
+        id: tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${{ github.event.release.tag_name }}"
+          if [ -z "$tag" ]; then
+            tag="${{ github.event.inputs.tag }}"
+          fi
+          if [ -z "$tag" ]; then
+            tag=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName)
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Download release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release download "${{ steps.tag.outputs.tag }}" --repo "$GITHUB_REPOSITORY" --dir dist-assets --skip-existing
+
+      - name: Publish/refresh release on lab
+        env:
+          GH_TOKEN: ${{ secrets.LAB_RELEASE_TOKEN }}
+        run: |
+          tag="${{ steps.tag.outputs.tag }}"
+          if gh release view "$tag" --repo adal1n/lab >/dev/null 2>&1; then
+            gh release upload "$tag" dist-assets/* --repo adal1n/lab --clobber
+          else
+            gh release create "$tag" dist-assets/* \
+              --repo adal1n/lab \
+              --title "anonymous.exe $tag" \
+              --notes "anonymous.exe $tag 설치 파일입니다. 소스 코드는 비공개입니다."
+          fi
