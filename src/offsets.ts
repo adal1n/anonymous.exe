@@ -230,6 +230,7 @@ export const _symbols = {
     'ingame.createChooChoo':                "_ZN16SystemPacketSend18CreateChooChooBuffERK9UserInfor",
     'ingame.getRespawnTime':                "_ZNK9GameScene14GetRespawnTimeEv",
     'ingame.wheellegSpeedUpBuffApplyBuff':  "_ZN20CWheellegSpeedUpBuff9ApplyBuffEP9UserInfor",
+    'ingame.buffOnKhaos':                   "_ZN16SystemPacketSend11BuffOnKhaosERK9UserInforS2_",
     'ingame.checkRemainedBullet':           "_ZN10UtilWeapon19CheckRemainedBulletERK9UserInfor",
     'ingame.getMedal':                      "_ZN9GameScene8GetMedalEh",
     'ingame.canHeal':                       "_ZN9GameScene7CanHealEP9UserInforS1_",
@@ -313,12 +314,19 @@ export const _symbols = {
     'global.reportClanMark':                "_ZN16SystemPacketSend14ReportClanMarkEjj",
     'global.reportHackingUser':             "_ZN16SystemPacketSend17ReportHackingUserEjjh",
     'global.sendReqDailyBonus':             "_ZN16SystemPacketSend17SendReqDailyBonusEh",
+    'global.respawn':                       "_ZN16SystemPacketSend7RespawnEv",
 
     // ---- FMatch (custom-room admin / kick) ----
     //   Not present in older libMyGame.so builds. agent.ts must use
     //   findExportByName so the lookup degrades to a no-op if the symbol is
     //   missing, instead of failing the whole agent init.
     'fmatch.kickUserSlot':                  "_ZN16SystemPacketSend18FMatchKickUserSlotEh",
+    'fmatch.clearSlot':                     "_ZN16SystemPacketSend15FMatchClearSlotEh",
+    'fmatch.matchStart':                    "_ZN16SystemPacketSend11FMatchStartEv",
+
+    // ---- Snail (Escort mode shared objective) ----
+    'snail.hitSnail':                       "_ZN16SystemPacketSend8HitSnailERK9UserInforhRKN7cocos2d4Vec3Esf",
+    'snail.healSnail':                      "_ZN16SystemPacketSend9HealSnailERK9UserInforhRKN7cocos2d4Vec3Esf",
 
     // ---- Camera (Cloud::CameraData) ----
     'camera.getCamera':                     "_ZN5Cloud10CameraData9GetCameraEv",

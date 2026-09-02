@@ -141,6 +141,22 @@ let mago: any = null;
 // Direct kick via SystemPacketSend::FMatchKickUserSlot. May be null on older
 // libMyGame.so builds that don't export the symbol — every call site guards.
 let fMatchKickUserSlot: any = null;
+let fMatchClearSlot: any = null;
+let fMatchStart: any = null;
+let hitSnailFn: any = null;
+let healSnailFn: any = null;
+let changeNicknameFn: any = null;
+let buffOnKhaosFn: any = null;
+let buffOnWheellegFn: any = null;
+let respawnFn: any = null;
+// SystemPacketSend::BuffSkillMagoTotem(entityId, list<uint32>&) — same online
+// opcode the totem itself sends on heal-tick. Ported from Mtool's magoBuff:
+// call with list=[selfSeq, selfSeq] while HP is low to force a heal tick.
+// The SystemOfflinePacket variant is deliberately not used online — it writes
+// a garbage HP delta (observed negative, e.g. -18506) mid-match.
+let magoBuffFn: any = null;
+let autoRespawnSent = false;
+let lastMagoBuffTime = 0;
 
 const log = (...args:any[]) => send(['log', ...args]);
 
@@ -305,6 +321,38 @@ setInterval(() => {
     }
 }, 5 * 1000);
 
+// Minimal std::list<unsigned int> (libstdc++ ABI: 16B head + 24B/node, both
+// next@0/prev@8) built once and reused so BuffSkillMagoTotem gets a valid
+// list argument without reallocating every tick. Ported from Mtool's
+// ensureMagoList/buildMagoList — a hand-rolled head+node layout without this
+// exact prev/next wiring was observed not to heal on-device.
+let magoListAlloc: NativePointer = null;
+let magoListCount = 0;
+function buildMagoList(ids: number[]): NativePointer {
+    const n = ids.length;
+    if (!magoListAlloc || magoListCount !== n) {
+        const size = 16 + n * 24;
+        magoListAlloc = Memory.alloc(size);
+        magoListCount = n;
+    }
+    const head = magoListAlloc;
+    head.writeByteArray(new Array(16 + n * 24).fill(0));
+    let prev = head;
+    let firstNode: NativePointer = null;
+    for (let i = 0; i < n; i++) {
+        const node = head.add(16 + i * 24);
+        node.writePointer(head);
+        node.add(8).writePointer(prev);
+        prev.writePointer(node);
+        node.add(16).writeU32(ids[i]);
+        prev = node;
+        if (!firstNode) firstNode = node;
+    }
+    head.add(8).writePointer(prev);
+    head.writePointer(firstNode);
+    return head;
+}
+
 let assistSpeed = 0;
 let lastTime = Date.now();
 let shooting = false;
@@ -334,6 +382,15 @@ function init(){
         elec = makeNFunc(agentSyms['ingame.buffHitElectric'], 'void', ['pointer', 'uint', 'uint']);
         mago = makeNFunc(agentSyms['ingame.debuffSkillMagoTotem'], 'void', ['uint', 'uint']);
         fMatchKickUserSlot = makeNFunc(agentSyms['fmatch.kickUserSlot'], 'void', ['uchar']);
+        fMatchClearSlot = makeNFunc(agentSyms['fmatch.clearSlot'], 'void', ['uchar']);
+        fMatchStart = makeNFunc(agentSyms['fmatch.matchStart'], 'void', []);
+        hitSnailFn = makeNFunc(agentSyms['snail.hitSnail'], 'void', ['pointer', 'uint8', 'pointer', 'int16', 'float']);
+        healSnailFn = makeNFunc(agentSyms['snail.healSnail'], 'void', ['pointer', 'uint8', 'pointer', 'int16', 'float']);
+        changeNicknameFn = makeNFunc(agentSyms['global.changeNickname'], 'void', ['uint8', 'pointer', 'uint8']);
+        buffOnKhaosFn = makeNFunc(agentSyms['ingame.buffOnKhaos'], 'void', ['pointer', 'pointer']);
+        buffOnWheellegFn = makeNFunc(agentSyms['ingame.buffOnWheelleg'], 'void', ['pointer']);
+        respawnFn = makeNFunc(agentSyms['global.respawn'], 'void', []);
+        magoBuffFn = makeNFunc(agentSyms['ingame.buffMagoTotem'], 'void', ['uint32', 'pointer']);
         attachNFunc(agentSyms['camera.getCameraUser'], {
             onLeave(retval) {
                 const ts = ptr(retval.toString());
@@ -606,6 +663,46 @@ function init(){
                     });
                 } else if(name === 'kick-loop-start'){ kickLoopStart(+args[0] || 0, +args[1] || 200);
                 } else if(name === 'kick-loop-stop'){ kickLoopStop();
+                } else if(name === 'bot-kick'){
+                    if(!fMatchClearSlot) return;
+                    for(let i = 0; i <= 100; i++){ try { fMatchClearSlot(i); } catch(_){} }
+                } else if(name === 'match-reset'){
+                    if(fMatchStart) try { fMatchStart(); } catch(_){}
+                } else if(name === 'change-nickname'){
+                    if(!changeNicknameFn) return;
+                    const nick = args[0] || '';
+                    const strPtr = Memory.allocUtf8String(nick);
+                    try { changeNicknameFn(1, strPtr, 0); } catch(_){}
+                } else if(name === 'snail-kill' || name === 'snail-heal'){
+                    // Ported from Mtool's "esco" action: SystemPacketSend::HitSnail /
+                    // HealSnail take a fixed capture-point Vec3 (from a device
+                    // capture, not derived from any live position) plus a large
+                    // short damage value — kill uses +18688, heal uses -18688.
+                    if(!epos || epos.isNull()) return;
+                    const v = Memory.alloc(12);
+                    if(name === 'snail-kill'){
+                        if(!hitSnailFn) return;
+                        v.writeFloat(0.74249267578125);
+                        v.add(4).writeFloat(3.1789627075195313);
+                        v.add(8).writeFloat(-0.34249114990234375);
+                        try { hitSnailFn(epos, 1, v, 18688, 0); } catch(_){}
+                    } else {
+                        if(!healSnailFn) return;
+                        v.writeFloat(-2.5789337158203125);
+                        v.add(4).writeFloat(0.06841754913330078);
+                        v.add(8).writeFloat(-1.5102081298828125);
+                        try { healSnailFn(epos, 12, v, -18688, 0); } catch(_){}
+                    }
+                } else if(name === 'buff-on-khaos' || name === 'buff-on-wheelleg'){
+                    if(!epos || epos.isNull()) return;
+                    const targets = getFilteredEntityList(false).filter(entity => !isDead(entity));
+                    if(name === 'buff-on-khaos'){
+                        if(!buffOnKhaosFn) return;
+                        targets.forEach(entity => { try { buffOnKhaosFn(epos, entity); } catch(_){} });
+                    } else {
+                        if(!buffOnWheellegFn) return;
+                        targets.forEach(entity => { try { buffOnWheellegFn(entity); } catch(_){} });
+                    }
                 } else if(name === 'ctm-default-milk'){ ctmDefaultMilk();
                 } else if(name === 'ctm-default-choco'){ ctmDefaultChoco();
                 } else if(name === 'ctm-desert-milk'){ ctmDesertMilk();
@@ -1050,6 +1147,30 @@ function loop(){
                 epos.add(eposOffset['oy']).writeFloat(100);
             } else {
                 epos.add(eposOffset['oy']).writeFloat(0);
+            }
+            if(cheats['mago-heal']){
+                // Auto totem heal: keep sending the totem's own heal opcode for
+                // ourselves while HP is under the threshold. Throttled — the
+                // real totem ticks on its own timer, spamming every frame just
+                // wastes packets.
+                const now = Date.now();
+                if(magoBuffFn && now - lastMagoBuffTime >= (+config['mago-heal-interval'] || 200)){
+                    const hp = epos.add(eposOffset['hp']).readS16();
+                    if(hp < (+config['mago-heal-threshold'] || 200) && hp > 0){
+                        const myNum = epos.add(eposOffset['number']).readS32();
+                        try { magoBuffFn(myNum >>> 0, buildMagoList([myNum, myNum])); } catch(_){}
+                    }
+                    lastMagoBuffTime = now;
+                }
+            }
+            if(cheats['auto-respawn']){
+                if(respawnFn){
+                    if(isDead(epos)){
+                        if(!autoRespawnSent){ try { respawnFn(); } catch(_){} autoRespawnSent = true; }
+                    } else {
+                        autoRespawnSent = false;
+                    }
+                }
             }
         } else {
             // lastEpos = false;

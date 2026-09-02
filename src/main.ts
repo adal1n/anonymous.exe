@@ -945,6 +945,84 @@ const lan:{[key:string]:{[key:string]:string}} = {
         'ja':'ババハック',
         'zh':'Bava外挂',
     },
+    'mago-heal':{
+        'en':'Mago Totem Auto Heal',
+        'ko':'마고토템 오토힐',
+        'ja':'マゴトーテム自動回復',
+        'zh':'马戈图腾自动治疗',
+    },
+    'mago-heal-threshold':{
+        'en':'Heal Below HP',
+        'ko':'HP 이하일 때 힐',
+        'ja':'HP以下で回復',
+        'zh':'低于此HP时治疗',
+    },
+    'auto-respawn':{
+        'en':'Auto Respawn',
+        'ko':'자동 부활',
+        'ja':'自動リスポーン',
+        'zh':'自动重生',
+    },
+    'escort':{
+        'en':'Escort (Snail)',
+        'ko':'에스코트 (달팽이)',
+        'ja':'エスコート(カタツムリ)',
+        'zh':'护送(蜗牛)',
+    },
+    'snail-kill':{
+        'en':'Kill Snail',
+        'ko':'달팽이 즉사',
+        'ja':'カタツムリ即死',
+        'zh':'秒杀蜗牛',
+    },
+    'snail-heal':{
+        'en':'Heal Snail',
+        'ko':'달팽이 완전 회복',
+        'ja':'カタツムリ全回復',
+        'zh':'蜗牛全恢复',
+    },
+    'misc-actions':{
+        'en':'Misc Actions',
+        'ko':'기타 액션',
+        'ja':'その他アクション',
+        'zh':'其他操作',
+    },
+    'match-reset':{
+        'en':'Reset Match',
+        'ko':'매치 리셋',
+        'ja':'マッチリセット',
+        'zh':'重置对局',
+    },
+    'bot-kick':{
+        'en':'Kick Bots',
+        'ko':'봇 킥',
+        'ja':'ボットキック',
+        'zh':'踢出机器人',
+    },
+    'buff-on-khaos':{
+        'en':'Buff On Khaos',
+        'ko':'버프 온 카오스',
+        'ja':'バフオンカオス',
+        'zh':'混沌增益',
+    },
+    'buff-on-wheelleg':{
+        'en':'Buff On Wheelleg',
+        'ko':'버프 온 휠레그',
+        'ja':'バフオンホイレ',
+        'zh':'轮腿增益',
+    },
+    'change-nickname':{
+        'en':'Change',
+        'ko':'변경',
+        'ja':'変更',
+        'zh':'更改',
+    },
+    'new-nickname':{
+        'en':'New nickname',
+        'ko':'새 닉네임',
+        'ja':'新しいニックネーム',
+        'zh':'新昵称',
+    },
     'changer':{
         'en':'Changer',
         'ko':'체인저',
@@ -1537,6 +1615,18 @@ $_('kick-loop-start')?.addEventListener('click', () => {
     ipcRenderer.send('kick-loop-start', slot, interval);
 });
 $_('kick-loop-stop')?.addEventListener('click', () => {ipcRenderer.send('kick-loop-stop');});
+
+$_('snail-kill')?.addEventListener('click', () => {ipcRenderer.send('snail-kill');});
+$_('snail-heal')?.addEventListener('click', () => {ipcRenderer.send('snail-heal');});
+$_('match-reset')?.addEventListener('click', () => {ipcRenderer.send('match-reset');});
+$_('bot-kick')?.addEventListener('click', () => {ipcRenderer.send('bot-kick');});
+$_('buff-on-khaos')?.addEventListener('click', () => {ipcRenderer.send('buff-on-khaos');});
+$_('buff-on-wheelleg')?.addEventListener('click', () => {ipcRenderer.send('buff-on-wheelleg');});
+$_('change-nickname')?.addEventListener('click', () => {
+    const nickname = $i('new-nickname').value || '';
+    if(!nickname) return;
+    ipcRenderer.send('change-nickname', nickname);
+});
 updateExceptNumber();
 $_('except-number').addEventListener('change', updateExceptNumber);
 

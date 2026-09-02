@@ -534,6 +534,13 @@ app.on("ready", async () => {
                                 ipcMain.on("kick-all-enemy", (e) => script.post(['kick-all-enemy']));
                                 ipcMain.on("kick-loop-start", (e, slot: number, interval: number) => script.post(['kick-loop-start', slot, interval]));
                                 ipcMain.on("kick-loop-stop", (e) => script.post(['kick-loop-stop']));
+                                ipcMain.on("bot-kick", (e) => script.post(['bot-kick']));
+                                ipcMain.on("match-reset", (e) => script.post(['match-reset']));
+                                ipcMain.on("change-nickname", (e, nickname: string) => script.post(['change-nickname', nickname]));
+                                ipcMain.on("snail-kill", (e) => script.post(['snail-kill']));
+                                ipcMain.on("snail-heal", (e) => script.post(['snail-heal']));
+                                ipcMain.on("buff-on-khaos", (e) => script.post(['buff-on-khaos']));
+                                ipcMain.on("buff-on-wheelleg", (e) => script.post(['buff-on-wheelleg']));
 
                                 ipcMain.on("ctm-default-milk", (e) => script.post(['ctm-default-milk']));
                                 ipcMain.on("ctm-default-choco", (e) => script.post(['ctm-default-choco']));
