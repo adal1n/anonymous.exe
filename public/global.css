@@ -1132,6 +1132,27 @@ body:not(:has(#app:not(.hide))) #theme-toggle { display: none; }
     50%      { opacity: 0.82; }
 }
 
+/* boot credit badge (icon + "made by team SQL") */
+#boot .boot-credit {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+    opacity: 0.85;
+    animation: bootLogoIn 900ms var(--ease-out) 200ms both;
+}
+#boot .boot-credit-icon {
+    width: 16px;
+    height: 16px;
+    background: url('./team-sql-logo.png') no-repeat center / contain;
+    filter: none;
+}
+:root[data-theme="dark"] #boot .boot-credit-icon { filter: invert(1); }
+
 /* manifesto — typed, monospaced, glitchy */
 #boot .manifesto {
     width: 100%;
